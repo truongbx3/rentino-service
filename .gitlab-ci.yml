@@ -1,0 +1,74 @@
+services:
+  - name: docker:dind
+    command: ["--insecure-registry=10.60.98.103:8088"]
+
+stages:
+  - build
+#  - deploy
+#  - analytics-sonarqube
+  # - deploy
+image: docker:dind
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_DRIVER: overlay2
+  REMOTE_REGISTRY_URL: "${REMOTE_REGISTRY}"
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+before_script:
+  - echo ${CI_COMMIT_REF_NAME}
+  - echo ${REMOTE_REGISTRY}
+
+build:
+  stage: build
+  # hoặc là master hoặc là tags
+  only:
+    - tags
+  script:
+    - docker version
+    - docker login ${REMOTE_REGISTRY} -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
+    - docker build --tag ${REMOTE_REGISTRY}/admin-service:dev --target admin-service .
+    - docker push ${REMOTE_REGISTRY}/admin-service:dev
+    - docker build --tag ${REMOTE_REGISTRY}/gateway-admin-service:dev --target gateway-admin-service .
+    - docker push ${REMOTE_REGISTRY}/gateway-admin-service:dev
+    - docker build --tag ${REMOTE_REGISTRY}/auth-service:dev --target auth-service .
+    - docker push ${REMOTE_REGISTRY}/auth-service:dev
+
+
+deploy:
+ stage: deploy
+ variables:
+   GIT_STRATEGY: none
+ only:
+   - tags
+ before_script:
+   - apk update && apk add openssh-client bash
+   - echo $SSH_SERVER_IP
+   - echo $SSH_USER@$SSH_SERVER_IP -p $SSH_PORT
+ script:
+   # chạy ssh-agent tương ứng với Gitlab Runner hiện tại
+   - eval $(ssh-agent -s)
+   # thêm nội dung của biến SSH_PRIVATE_KEY vào agent store
+   #    - bash -c 'ssh-add <(echo "$SSH_PRIVATE_KEY" | base64 -d)'
+   - bash -c 'ssh-add <(echo "$SSH_PRIVATE_KEY")'
+   - mkdir -p ~/.ssh && touch ~/.ssh/known_hosts
+   - ssh-keyscan -p $SSH_PORT  $SSH_SERVER_IP >> ~/.ssh/known_hosts
+   - chmod 644 ~/.ssh/known_hosts
+   # - scp -P $SSH_PORT docker-compose.yml $SSH_USER@$SSH_SERVER_IP:/home/$SSH_USER
+   # Thực hiện SSH vào server, login vào Registry, chuyển tới folder project
+   # Down project, pull image về, up project và xoá đi image cũ
+   - >
+     ssh -t -t $SSH_USER@$SSH_SERVER_IP -p $SSH_PORT
+     "docker login ${REMOTE_REGISTRY}  -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD;
+     docker pull ${REMOTE_REGISTRY}/admin-service:dev;
+     docker pull ${REMOTE_REGISTRY}/gateway-admin-service:dev;
+     docker pull ${REMOTE_REGISTRY}/auth-service:dev;
+     docker stop admin-service;
+     docker rm admin-service;
+     docker stop gateway-admin-service;
+     docker rm gateway-admin-service;
+     docker stop auth-service;
+     docker rm auth-service;
+     docker run -d --log-opt max-size=10m --log-opt max-file=2 -p 8688:8080 --name admin-service ${REMOTE_REGISTRY}/admin-service:dev;
+     docker run -d --log-opt max-size=10m --log-opt max-file=2 -p 8686:8888 --name gateway-admin-service ${REMOTE_REGISTRY}/gateway-admin-service:dev;
+     docker run -d --log-opt max-size=10m --log-opt max-file=2 -p 8687:8081 --name auth-service ${REMOTE_REGISTRY}/auth-service:dev;"

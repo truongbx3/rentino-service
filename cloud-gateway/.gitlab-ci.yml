@@ -1,0 +1,94 @@
+services:
+  - name: docker:dind
+    command: ["--insecure-registry=10.60.98.103:8088"]
+
+stages:
+  - build
+  - build-image
+  - deploy
+  - analytics-sonarqube
+  # - deploy
+image: docker:dind
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_DRIVER: overlay2
+  REMOTE_REGISTRY_URL: "${REMOTE_REGISTRY}"
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+before_script:
+  - echo ${CI_COMMIT_REF_NAME}
+  - echo ${REMOTE_REGISTRY}
+
+build:
+  image: maven:3.6.0-jdk-11-slim
+  stage: build
+  # hoặc là master hoặc là tags
+  only:
+    - tags
+  script:
+    - mvn --settings settings.xml -f pom.xml clean package
+    - ls
+  cache:
+    paths:
+    - .m2/repository
+  artifacts:
+    paths:
+    - target 
+    expire_in: 1 hours
+
+    
+build-image:
+  stage: build-image
+  # hoặc là master hoặc là tags
+  only:
+    - tags
+  script:
+    - docker version
+    - docker login ${REMOTE_REGISTRY} -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
+    - docker build  --tag ${REMOTE_REGISTRY}:dev .
+    - docker push ${REMOTE_REGISTRY}:dev
+  artifacts:
+    paths:
+    - target 
+    expire_in: 1 hours
+
+deploy:
+  stage: deploy
+  variables:
+    GIT_STRATEGY: none
+  only:
+    - tags
+  before_script:
+    - apk update && apk add openssh-client bash
+    - echo $SSH_SERVER_IP
+    - echo $SSH_USER@$SSH_SERVER_IP -p $SSH_PORT
+  script:
+    # chạy ssh-agent tương ứng với Gitlab Runner hiện tại
+    - eval $(ssh-agent -s)
+    # thêm nội dung của biến SSH_PRIVATE_KEY vào agent store
+#    - bash -c 'ssh-add <(echo "$SSH_PRIVATE_KEY" | base64 -d)'
+    - bash -c 'ssh-add <(echo "$SSH_PRIVATE_KEY")'
+    - mkdir -p ~/.ssh && touch ~/.ssh/known_hosts
+    - ssh-keyscan -p $SSH_PORT  $SSH_SERVER_IP >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    # - scp -P $SSH_PORT docker-compose.yml $SSH_USER@$SSH_SERVER_IP:/home/$SSH_USER
+    # Thực hiện SSH vào server, login vào Registry, chuyển tới folder project
+    # Down project, pull image về, up project và xoá đi image cũ
+    - >
+      ssh -t -t $SSH_USER@$SSH_SERVER_IP -p $SSH_PORT
+      "docker login ${REMOTE_REGISTRY}  -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD;
+      docker pull ${REMOTE_REGISTRY}:dev;
+      docker stop ticket_app;
+      docker rm ticket_app;
+      docker run -d --log-opt max-size=10m --log-opt max-file=2 -p 8080:8080 --name ticket_app ${REMOTE_REGISTRY}:dev;"
+analytics-sonarqube-job:
+  stage: analytics-sonarqube
+  image:
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  script:
+    - sonar-scanner -Dsonar.qualitygate.wait=true -Dsonar.login=$SONAR_LOGIN  -Dsonar.projectKey=$SONAR_PROJECT_KEY  -Dsonar.host.url=$SONAR_HOST_URL
+  allow_failure: true
+  only:
+    - schedules
