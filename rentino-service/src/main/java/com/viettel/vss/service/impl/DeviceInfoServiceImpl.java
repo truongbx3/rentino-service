@@ -7,12 +7,14 @@ import com.viettel.vss.dto.attach_file.FunctionItem;
 import com.viettel.vss.dto.attach_file.ImageItem;
 import com.viettel.vss.dto.attach_file.TypeCheck;
 import com.viettel.vss.entity.*;
+import com.viettel.vss.enums.DeviceStatus;
 import com.viettel.vss.exception.BusinessException;
 import com.viettel.vss.repository.*;
 import com.viettel.vss.service.DeviceInfoService;
 import com.viettel.vss.service.OpenAIService;
 import com.viettel.vss.util.DataUtil;
 import com.viettel.vss.util.MessageCommon;
+import com.viettel.vss.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.math3.analysis.function.Add;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -100,7 +102,7 @@ public class DeviceInfoServiceImpl extends BaseServiceImpl<DeviceInfo, DeviceInf
     }
 
     @Override
-    public String saveDeviceInfo(String username, DeviceInfoDto deviceInfoDtos) {
+    public DeviceInfoDto saveDeviceInfo(String username, DeviceInfoDto deviceInfoDtos) {
         Optional<UserEntity> userEntity = usersRepository.findByPhone(username);
         if (userEntity.isEmpty()) {
             throw new BusinessException(BusinessExceptionCode.ERROR_USER_NOTFOUND,
@@ -110,7 +112,32 @@ public class DeviceInfoServiceImpl extends BaseServiceImpl<DeviceInfo, DeviceInf
         deviceInfoDtos.setModel(deviceInfoDtos.getModel().toLowerCase());
         deviceInfoDtos.setDeviceName(deviceInfoDtos.getDeviceName().toLowerCase());
         deviceInfoDtos.setDeviceCode(joinWithUnderscore(deviceInfoDtos.getDeviceName(), deviceInfoDtos.getTotalRam(), deviceInfoDtos.getStorage()));
-        this.saveObject(deviceInfoDtos);
+        deviceInfoDtos.setStatus(DeviceStatus.PROCESSING.getStatus());
+        return DataUtil.convertObject( this.saveObject(deviceInfoDtos), x -> modelMapper.map(x, DeviceInfoDto.class));
+    }
+
+    @Override
+    public String updateBankingInfo(DeviceInfoDto deviceInfoDtos) {
+        if (deviceInfoDtos.getId() == null ||
+                StringUtils.isNullOrEmpty(deviceInfoDtos.getBankingNumber()) ||
+                StringUtils.isNullOrEmpty(deviceInfoDtos.getBankingName()) ||
+                StringUtils.isNullOrEmpty(deviceInfoDtos.getBankingUser()))
+        {
+            throw new BusinessException(BusinessExceptionCode.DEVICE_INFO_NOTVALID,
+                    messageCommon.getMessage(BusinessExceptionCode.DEVICE_INFO_NOTVALID));
+        }
+        Optional<DeviceInfo> lst = deviceInfoRepository.findById(deviceInfoDtos.getId());
+        if (lst.isEmpty()) {
+            throw new BusinessException(BusinessExceptionCode.DEVICE_INFO_NOTVALID,
+                    messageCommon.getMessage(BusinessExceptionCode.DEVICE_INFO_NOTVALID));
+        }
+        DeviceInfo deviceInfo = lst.get();
+        deviceInfo.setImei(deviceInfoDtos.getImei());
+        deviceInfo.setBankingName(deviceInfoDtos.getBankingName());
+        deviceInfo.setBankingNumber(deviceInfoDtos.getBankingNumber());
+        deviceInfo.setBankingUser(deviceInfoDtos.getBankingUser());
+        deviceInfo.setStatus(DeviceStatus.WAIT_APPROVE.getStatus());
+        deviceInfoRepository.save(deviceInfo);
         return "";
     }
 
@@ -177,6 +204,62 @@ public class DeviceInfoServiceImpl extends BaseServiceImpl<DeviceInfo, DeviceInf
         }
         return DataUtil.convertObject(deviceInfoRepository.save(deviceInfo), x -> modelMapper.map(x, DeviceInfoDto.class));
     }
+
+
+    @Override
+    public DeviceInfoDto analyzeWeb(String userName, String transactionId) throws Exception {
+        Optional<UserEntity> userEntity = usersRepository.findByPhone(userName);
+        if (userEntity.isEmpty()) {
+            throw new BusinessException(BusinessExceptionCode.ERROR_USER_NOTFOUND,
+                    messageCommon.getMessage(BusinessExceptionCode.ERROR_USER_NOTFOUND));
+        }
+        UserEntity userEntity1 = userEntity.get();
+//        List<DeviceCheck> deviceChecks = deviceCheckRepository.findItemCheck(userEntity1.getId(), transactionId, List.of(ImageItem.FRONT_CAMERA.toString(), ImageItem.BACK_CAMERA.toString()));
+//        if (deviceChecks.size() != 2) {
+//            throw new BusinessException(BusinessExceptionCode.SCREENCHECK_NOT_ENOUGHT,
+//                    messageCommon.getMessage(BusinessExceptionCode.SCREENCHECK_NOT_ENOUGHT));
+//        }
+//        CheckDeviceOpenAPI checkDeviceOpenAPI = openAIService.analyze(splitImage(deviceChecks));
+        DeviceInfo deviceInfo = deviceInfoRepository.findFirstByUserIdAndTransactionIdOrderByCreatedDate(userEntity1.getId(), transactionId);
+//        if (deviceInfo == null) {
+//            throw new BusinessException(BusinessExceptionCode.DEVICE_NOT_FOUND,
+//                    messageCommon.getMessage(BusinessExceptionCode.DEVICE_NOT_FOUND));
+//        }
+//        deviceInfo.setFrontCheck(checkDeviceOpenAPI.getFront().toString());
+//        deviceInfo.setBackCheck(checkDeviceOpenAPI.getBack().toString());
+//        deviceInfo.setSummary(checkDeviceOpenAPI.getSummary());
+//        Kiem tra xem function check co ok khong neu co bat ky loi la  loai 3
+        List<DeviceCheck> functionCheck = deviceCheckRepository.findFunctionCheck(userEntity1.getId(), transactionId, Arrays.asList(FunctionItem.values()).stream().map(Enum::name).collect(Collectors.toList()), "0");
+        if (functionCheck.size() > 0) {
+            deviceInfo.setFunctionCheck(TypeCheck.LOAI_3.toString());
+        } else {
+            deviceInfo.setFunctionCheck(TypeCheck.LOAI_1.toString());
+        }
+
+//        addition check
+        List<DeviceQuestion> deviceQuestions = deviceQuestionRepository.findAllByTypeAndIsDeletedOrderByOrderDesc("MOBILE_WEB", 0);
+        List<String> lstAdd = deviceQuestions.stream().map(deviceQuestion -> deviceQuestion.getCode()).collect(Collectors.toList());
+        List<DeviceCheck> additonCheck = deviceCheckRepository.findAdditionCheck(userEntity1.getId(), transactionId, lstAdd);
+        List<String> lstValue = additonCheck.stream().map(DeviceCheck::getValue).collect(Collectors.toList());
+        String maxAdditionCheck = maxType(lstValue);
+
+//        String finalSummary = findMaxType(deviceInfo.getFrontCheck(), deviceInfo.getBackCheck(), deviceInfo.getFunctionCheck(),maxAdditionCheck);
+        String finalSummary = maxType(Arrays.asList(deviceInfo.getFunctionCheck(), maxAdditionCheck));
+        deviceInfo.setAdditionCheck(maxAdditionCheck);
+        deviceInfo.setFinalSummary(finalSummary);
+        Optional<DevicePriceDetail> devicePriceDetail = devicePriceDetailRepository.findFirstByDeviceCodeAndTypeAndIsDeleted(deviceInfo.getDeviceCode(), finalSummary, 0);
+        if (devicePriceDetail.isEmpty()) {
+            deviceInfoRepository.save(deviceInfo);
+            throw new BusinessException(BusinessExceptionCode.DEVICE_NOT_VALID,
+                    messageCommon.getMessage(BusinessExceptionCode.DEVICE_NOT_VALID));
+//            deviceInfo.setPrice(new BigDecimal(10000000));
+        } else {
+
+            deviceInfo.setPrice(devicePriceDetail.get().getPrice());
+        }
+        return DataUtil.convertObject(deviceInfoRepository.save(deviceInfo), x -> modelMapper.map(x, DeviceInfoDto.class));
+    }
+
 
     @Override
     public List<DeviceCheckDto> getDeviceCheck(String transactionId) {

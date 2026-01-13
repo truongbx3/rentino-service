@@ -83,8 +83,29 @@ public class DeviceInfo extends BaseEntity{
     @Column(name = "addition_check")
     private String additionCheck;
 
+    @Column(name = "type_check")
+    private String typeCheck;
+
+    @Column(name = "imei")
+    private String imei;
+
+    @Column(name = "status")
+    private String status;
+
+    @Column(name = "video_url")
+    private String videoUrl;
+
     @Column(name = "price")
     private BigDecimal price;
+
+    @Column(name = "banking_number")
+    private String bankingNumber;
+
+    @Column(name = "banking_name")
+    private String bankingName;
+
+    @Column(name = "banking_user")
+    private String bankingUser;
 
 //    @Basic
 //	@Column(name = "is_deleted")

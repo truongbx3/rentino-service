@@ -11,6 +11,8 @@ public class DeviceQuestionDto extends BaseDto {
     private String code;
     private String type;
     private String question;
+    private String title;
     private Integer order;
+
     List<DeviceQuestionAnswerDto> deviceQuestionAnswerDtos;
 }

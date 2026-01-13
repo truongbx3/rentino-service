@@ -28,5 +28,13 @@ public class DeviceInfoDto extends BaseDto{
     private String functionCheck;
     private String finalSummary ;
     private String additionCheck ;
+    private String typeCheck = "CUS_CHECK" ;
+    private String imei ;
+    private String status  ;
+    private String videoUrl ;
+    private String bankingNumber ;
+    private String bankingName ;
+    private String bankingUser ;
+
 
 }

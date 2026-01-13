@@ -30,6 +30,11 @@ public class DeviceQuestion extends BaseEntity {
     @Column(name = "code")
     private String code;
 
+
+    @Basic
+    @Column(name = "title")
+    private String title;
+
     @Basic
     @Column(name = "order")
     private Integer order;

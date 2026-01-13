@@ -15,4 +15,6 @@ public interface DeviceInfoRepository extends BaseRepository<DeviceInfo, Long>{
 
 
     public DeviceInfo findFirstByUserIdAndTransactionIdOrderByCreatedDate(Long userId, String transactionId);
+
+//    public DeviceInfo findFirstByTransactionIdOrderByCreatedDate(Long userId, String transactionId);
 }

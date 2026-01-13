@@ -3,6 +3,7 @@ package com.viettel.vss.constant;
 public class BusinessExceptionCode {
 
     public static final String ERROR_USER_NOTFOUND = "error.user.notfound";
+    public static final String DEVICE_INFO_NOTVALID = "device.info.notvalid";
     public static final String VALIDATE_FAILED = "validate.failed";
     public static final String ATTACH_FILE_NOT_FOUND = "exception.message.AttachFileNotFound";
     public static final String INVALID_PHONE_NUMBER = "exception.message.user.inValidPhoneNumber";

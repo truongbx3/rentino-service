@@ -20,10 +20,18 @@ public interface DeviceCheckRepository extends BaseRepository<DeviceCheck, Long>
             "WHERE d.userId =:userId  and d.transactionId=:transactionId and d.item in :item and d.value =:value ")
     public List<DeviceCheck> findFunctionCheck(Long userId, String transactionId, List<String> item,String value);
 
+    @Query("SELECT d FROM DeviceCheck d " +
+            "WHERE d.transactionId=:transactionId and d.item in :item and d.value =:value ")
+    public List<DeviceCheck> findFunctionCheckWeb(String transactionId, List<String> item,String value);
+
 
     @Query("SELECT d FROM DeviceCheck d " +
             "WHERE d.userId =:userId  and d.transactionId=:transactionId and d.item in :item")
     public List<DeviceCheck> findAdditionCheck(Long userId, String transactionId, List<String> item);
+
+    @Query("SELECT d FROM DeviceCheck d " +
+            "WHERE d.transactionId=:transactionId and d.item in :item")
+    public List<DeviceCheck> findAdditionCheckWeb( String transactionId, List<String> item);
 
     @Query("SELECT d FROM DeviceCheck d " +
             "WHERE d.transactionId=:transactionId ")
