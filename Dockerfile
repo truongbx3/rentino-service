@@ -1,8 +1,8 @@
-FROM maven:3.6.0-jdk-11-slim AS MAVEN_BUILD
-COPY . /build
+#FROM maven:3.6.0-jdk-11-slim AS MAVEN_BUILD
+#COPY . /build
 #RUN #mvn  --settings /build/admin-service/settings.xml -f /build/admin-service/pom.xml clean package
 #RUN #mvn -f /build/remino-common/pom.xml clean package
-RUN mvn -f /build/cloud-gateway/pom.xml clean package
+#RUN mvn -f /build/cloud-gateway/pom.xml clean package
 #RUN mvn  -f /build/auth-service/pom.xml clean package
 
 #FROM openjdk:11 AS admin-service
@@ -12,21 +12,21 @@ RUN mvn -f /build/cloud-gateway/pom.xml clean package
 #COPY --from=MAVEN_BUILD /build/admin-service/target/*.jar /app/app.jar
 #ENTRYPOINT ["java", "-jar","/app/app.jar"]
 
-FROM openjdk:11.0.11-jdk-slim AS gateway-service
+FROM openjdk:11.0.11-jdk-slim AS gateway-xiaomi-service
 WORKDIR /app
 ENV TZ="Asia/Ho_Chi_Minh"
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-COPY --from=MAVEN_BUILD /build/cloud-gateway/target/*.jar /app/app.jar
+COPY /cloud-gateway/target/*.jar /app/app.jar
 ENTRYPOINT ["java", "-jar", "/app/app.jar", "--spring.profiles.active=prod"]
 
-FROM openjdk:11.0.11-jdk-slim AS auth-service
+FROM openjdk:11.0.11-jdk-slim AS auth-xiaomi-service
 WORKDIR /app
 ENV TZ="Asia/Ho_Chi_Minh"
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 COPY /auth-service/target/*.jar /app/app.jar
 ENTRYPOINT ["java", "-jar","/app/app.jar"]
 
-FROM eclipse-temurin:11-jdk AS rentino-service
+FROM eclipse-temurin:11-jdk AS rentino-xiaomi-service
 WORKDIR /app
 ENV TZ=Asia/Ho_Chi_Minh
 
